@@ -37,7 +37,7 @@ class rotten_potatoes {
 	/**
 	 * The current major Rotten Potatoes version
 	 */
-	const VERSION = "0.1";
+	const VERSION = "0.2";
 	
 	/**
 	 * The presently implemented API version
@@ -59,7 +59,7 @@ class rotten_potatoes {
 	/**
 	 * Search
 	 */
-	const API_URL_TMPL_SEARCH = "http://api.rottentomatoes.com/api/public/{api-version}/movies.{format}?q={search-term}&page={page-number}&page_limit={results-per-page}&apikey={api-key}";
+	const API_URL_TMPL_SEARCH = "http://api.rottentomatoes.com/api/public/{api-version}/movies.{format}?apikey={api-key}&{query-args}";
 	
 	/**
 	 * Movie details
@@ -124,27 +124,69 @@ class rotten_potatoes {
 	
 	/**
 	 * Make a movie search based on a query
-	 * @param string $query The search query. <b>Required</b>
-	 * @param int $page The page number to start at. <b>Optional</b>
-	 * @param int $page_limit How many results per page. <b>Optional</b>
+	 * 
+	 * @param array $args The search query arguments. <b>Required</b>
+	 * @param int $year Search within a specific year. <b>Optional</b>
+	 * @param int $page_limit Results per page. <b>Optional</b>
+	 * @param int $page Which page to search within. <b>Optional</b>
+	 * 
 	 * @return rt_search_result The search result information.
 	 */
-	function search($query, $page=NULL, $page_limit=NULL) {
+	function search($query, $year=NULL, $page_limit=5, $page=NULL) {
+		
+		$args = array (
+			"q" => $query,
+			"year" => (int)$year,
+			"page_limit" => $page_limit,
+			"page" => $page
+		);
 		
 		$json = $this->request(self::API_URL_TMPL_SEARCH, array(
-			"search-term"		=> urlencode($query),
-			"page-number"		=> $page,
-			"results-per-page"	=> $page_limit
+			"query-args" => $this->collapse_args($args)
 		));
 		
-		if(isset($json->total) AND $json->total > 0) {
-			return new rt_search_result($json);
+		if(isset($json->total)) {
+			
+			if($json->total > 0) {
+				
+				return new rt_search_result($json);
+				
+			} else {
+				
+				return array();
+				
+			}
+			
+		} else {
+			
+			return NULL;
+			
+		}
+		
+	}	
+	
+	/**
+	 * Gets movie details by a movie ID.
+	 * 
+	 * @param string $movie_id The movie ID
+	 * @return rt_movie The resulting movie object
+	 */
+	public function get_movie($movie_id) {
+		
+		$tmpl_args = array (
+			"movie-id" => $movie_id
+		);
+		
+		$json = $this->request(self::API_URL_TMPL_MOVIE, $tmpl_args);
+				
+		if(isset($json->id) and !empty($json->id)) {
+			return new rt_movie($json, $this);
 		} else {
 			return NULL;
 		}
 		
-	}	
-
+	}
+	
 	/**
 	 * Performs a request, populating required fields in a template format,
 	 * @param string $fmt The template format
@@ -153,11 +195,13 @@ class rotten_potatoes {
 	 * @return mixed If succesful, the JSON object response. If not, NULL.
 	 */
 	private function request($fmt, $args=array()) {
-					   
+		
+		// build up an array of template arguments
 		$tmpl_args = array_merge($this->tmpl_args, $args);
 		
+		// build the templated URL -- this is the URL we'll now request
 		$request_url = $this->tmpl($fmt, $tmpl_args);
-		
+
 		$response = NULL;
 		
 		try 
@@ -176,29 +220,6 @@ class rotten_potatoes {
 	}
 	
 	/**
-	 * Gets movie details by a movie ID.
-	 * 
-	 * @param string $movie_id The movie ID
-	 * @return rt_movie The resulting movie object
-	 */
-	public function get_movie($movie_id) {
-		
-		$tmpl_args = array_merge($this->tmpl_args, array (
-			"movie-id" => $movie_id
-		));
-		
-		$json = $this->request(self::API_URL_TMPL_MOVIE, $tmpl_args);
-		
-		
-		if(isset($json->id) and !empty($json->id)) {
-			return new rt_movie($json, $this);
-		} else {
-			return NULL;
-		}
-		
-	}
-	
-	/**
 	 * Fills in a template theme
 	 * 
 	 * @param string $tmpl The template
@@ -212,6 +233,24 @@ class rotten_potatoes {
 		}
 		
 		return $tmpl;
+		
+	}
+	
+	/**
+	 * Collapses a key/value collection into a URL-encoded query string
+	 * 
+	 * @param array $args The key-value collaction to collapse
+	 * @return string Query string
+	 */
+	function collapse_args($args) {
+		
+		$kv = array();
+		
+		foreach($args as $key => $value) {
+			$kv[] = urlencode($key) . "=" . urlencode($value);
+		}
+		
+		return implode("&", $kv);
 		
 	}
 	
